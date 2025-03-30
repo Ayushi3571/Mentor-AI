@@ -8,15 +8,10 @@ from gensim import corpora, models, similarities
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-#import urllib.request
 import requests
-#import urllib
-#from urllib.request import urlopen
-#import urllib3
 import html
-#import matplotlib.pyplot as plt
-#from nltk.tokenize import sent_tokenize
-#from sklearn.feature_extraction.text import TfidfVectorizer
+from pathlib import Path
+import ollama
 
 # Ensure necessary NLTK resources are downloaded
 try:
@@ -150,7 +145,8 @@ class CalculusMentorRAG:
         return textbook
     
     def preprocess_text(self, text):
-        """Clean and normalize text."""
+        """Clean and normalize text.
+           text is a str"""
         # Convert to lowercase
         text = text.lower()
         # Remove special characters and digits
@@ -194,7 +190,8 @@ class CalculusMentorRAG:
         """Build Gensim similarity model from chunks."""
         print("Building similarity model...")
         
-        # Preprocess chunks
+        # Preprocess chunks 
+        ''' CHANGE THIS TO FILE SHIT ''' # CHANGE NOTHING ELSE
         processed_chunks = [self.preprocess_text(chunk) for chunk in self.chunks]
         
         # Create dictionary and corpus
@@ -278,6 +275,20 @@ class CalculusMentorRAG:
         print(f"Training complete. Ready to answer questions about calculus!")
         return True
     
+    def add_chunks_from_file(self, directory):
+        folder = Path(directory)
+        number = 1
+        for file_path in folder.glob("*.txt"):  # Adjust the file extension as needed
+            with file_path.open('r', encoding='utf-8') as file:
+                content = file.read()
+                self.chunks.append(content)
+                self.chunk_sources.append({
+                    'chapter': file_path.name ,
+                    'chapter_number': number,
+                    'chunk_index': len(self.chunks) - 1
+                })
+                #print(content)
+            
     def save_model(self, directory="model"):
         """Save the model to disk."""
         if not os.path.exists(directory):
@@ -312,49 +323,54 @@ class CalculusMentorRAG:
         
         # Load index
         self.index = similarities.MatrixSimilarity.load(os.path.join(directory, "index.gensim"))
-        
-        # Load chunks and sources
-        chunks_df = pd.read_csv(os.path.join(directory, "chunks.csv"))
-        self.chunks = chunks_df['chunk'].tolist()
-        
-        self.chunk_sources = []
-        for _, row in chunks_df.iterrows():
-            self.chunk_sources.append({
-                'page': row['page'],
-                'section': row['section'],
-                'chunk_index': row['chunk_index']
-            })
-            
-        print(f"Model loaded from {directory}")
+                
         return True
 
-# Example usage
-if __name__ == "__main__":
-    
-    mentor = CalculusMentorRAG()
-    link = "https://archive.org/stream/CalculusSpivak/Calculus%20-%20Spivak_djvu.txt"
-    
-    # Train or load the model
-    if os.path.exists("model/dictionary.gensim"):
-        print("Loading existing model...")
-        mentor.load_model()
-    else:
-        print("Training new model...")
-        mentor.train_from_txt(link)
-        mentor.save_model()
+mentor = CalculusMentorRAG()
+dirctory = "C:/Users/ayush/Downloads/UG/UG/parsed_sections"
 
-    # Interactive question answering loop
-    print("\nCalculus Mentor is ready! Type 'quit' to exit.")
-    while True:
-        question = input("\nAsk a calculus question: ")
-        if question.lower() == 'quit':
-            break
-            
-        answer = mentor.answer_question(question)
-        print("\n" + answer)
-        
-'''
-1. The txt source is messing up symbols, we need official textbook
-2. llama path: "C:/Users/ayush/.ollama/models/blobs/sha256-00e1317cbf74d901080d7100f57580ba8dd8de57203072dc6f668324ba545f29"
+# Train or load the model
+if os.path.exists("model/dictionary.gensim"):
+    print("Loading existing model...")
+    mentor.load_model()
+    mentor.add_chunks_from_file(dirctory)
+else:
+    print("Train new model...")
+       
+    
+# Define Phi-4's role as a math tutor
+system_prompt = """
+You are an interactive math tutor. You use relevant textbook sections to explain topics.
+Follow these rules:
+1. Use the retrieved textbook content to provide accurate explanations.
+2. Explain concepts step by step.
+3. Ask the student questions to check their understanding.
+4. Encourage critical thinking by providing hints before revealing the answer.
+"""
 
-'''
+# Initialize conversation history
+conversation = [{"role": "system", "content": system_prompt}]
+
+# Start chat loop
+while True:
+    user_input = input("You: ")  # User asks a question
+    
+    if user_input.lower() in ["exit", "quit", "bye"]:
+        print("Tutor: Great session! See you next time! 😊")
+        break
+    
+    # Retrieve relevant textbook sections
+    docs = mentor.answer_question(user_input)
+    
+    # Add retrieved content to conversation
+    context_message = f"Here is some useful textbook information:\n{docs}\n\nNow answer the student's question: {user_input}"
+    conversation.append({"role": "user", "content": context_message})
+
+    # Get response from Phi-4
+    response = ollama.chat(model="phi4", messages=conversation)
+    
+    # Print tutor's response
+    print("Tutor:", response['message']['content'])
+
+    # Add assistant response to chat history
+    conversation.append({"role": "assistant", "content": response['message']['content']})
