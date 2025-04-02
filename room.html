@@ -1,0 +1,93 @@
+{% extends 'base.html' %} {% block content %}
+<!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="bot-icon">
+                    <path d="M12 8V4H8"></path>
+                    <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+                    <path d="M2 14h2"></path>
+                    <path d="M20 14h2"></path>
+                    <path d="M15 13v2"></path>
+                    <path d="M9 13v2"></path>
+                </svg>
+                <h1>RAG Learning Assistant</h1>
+            </div>
+        </header>
+
+<div id="room-container">
+  <h1 id="home-header">Ask me anything! I'm here to help</h1>
+  <div id="room-subsection">   
+  </div>
+
+  <div id="chat-room-widget">
+    <div id="msgs-container">
+      <ul id="messages"></ul>
+    </div>
+
+    <div id="message-box">
+      <input
+        type="text"
+        placeholder="Enter your message"
+        id="message-input"
+        name="message"
+      />
+      <button type="submit" id="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+    var socketio = io();
+
+    socketio.on("message", function (message) {
+      createChatItem(message.message, message.sender);
+    });
+
+    function createChatItem(message, sender) {
+      var messages = document.getElementById("messages");
+
+      if (sender === "Bot") {
+        var content = `
+          <li class="message-item ${"peer-message-item"}">
+              <p>${message}</p>
+              <small class="${"muted-text"}">
+          </li>
+      `;
+      } else {
+        var senderIsUser = "{{user}}" === sender;
+        var content = `
+          <li class="message-item ${
+            senderIsUser ? "self-message-item" : "peer-message-item"
+          }">
+              <p>${message}</p>
+              <small class="${
+                senderIsUser ? "muted-text" : "muted-text-white"
+              }">
+          </li>
+      `;
+      }
+
+      messages.innerHTML += content;
+    }
+
+    function sendMessage() {
+      var msgInput = document.getElementById("message-input");
+      if (msgInput.value === "") return;
+
+      var msg = msgInput.value;
+      socketio.emit("message", { message: msg });
+      msgInput.value = "";
+    }
+	
+    socketio.on('server_response', function(data) {
+    createChatItem(data.message, "Bot"); // Display response in chat as if from an assistant
+});
+
+  </script>
+
+  {% for message in messages %}
+  <script type="text/javascript">
+    createChatItem("{{message.message}}", "{{message.sender}}");
+  </script>
+  {% endfor %}
+</div>
+{% endblock %}
