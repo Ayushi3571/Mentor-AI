@@ -14,7 +14,9 @@ from pathlib import Path
 import ollama
 from flask import Flask, render_template
 from flask_socketio import SocketIO, send, emit
-import time
+from azure.ai.inference import ChatCompletionsClient
+from azure.ai.inference.models import SystemMessage, UserMessage
+from azure.core.credentials import AzureKeyCredential
 
 # Ensure necessary NLTK resources are downloaded
 try:
@@ -339,7 +341,15 @@ if os.path.exists("model/dictionary.gensim"):
     mentor.add_chunks_from_file(dirctory)
 else:
     print("Train new model...")
-       
+
+GITHUB_TOKEN = "nuh_uhh"
+endpoint = "phi-4"
+model_name = "Phi-4"
+
+client = ChatCompletionsClient(
+    endpoint=endpoint,
+    credential=AzureKeyCredential(token),
+)      
     
 # Define Phi-4's role as a math tutor
 system_prompt = """
@@ -362,17 +372,23 @@ def get_response(user_input):
     # Add retrieved content to conversation
     #context_message = f"Here is some useful textbook information:\n{docs}\n\nNow answer the student's question: {user_input}"
     #conversation.append({"role": "user", "content": context_message})
+    
     conversation.append({"role": "user", "content": user_input})
     # Get response from Phi-4
-    response = ollama.chat(model="phi4", messages=conversation)
+    response = client.complete(
+        messages=[
+            UserMessage(user_input),
+        ],
+        temperature=1.0,
+        top_p=1.0,
+        max_tokens=1000,
+        model=model_name
+    )
     
     # Print tutor's response
-    print("Tutor:", response['message']['content'])
+    print("Tutor:", print(response.choices[0].message.content))
 
-    # Add assistant response to chat history
-    conversation.append({"role": "assistant", "content": response['message']['content']})
-    
-    return response
+    return response.choices[0].message.content
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -389,22 +405,6 @@ messages.append(message)
 def room():
     return render_template('room.html', room=room, user=name, messages=messages)
 
-message = {
-    "sender": "You",
-    "message": " what is d/dx x^2"}
-messages.append(message)
-message = {
-    "sender": "Bot",
-    "message": "To find the derivative of  f(x) = x^2 with respect to  x , we can use the power rule for differentiation. The power rule states that if you have a function  f(x) = x^n , where  n is a constant, then its derivative is:f'(x) = nx^{n-1} /n In this case, our function is f(x) = x^2 . Here, the exponent  n  is 2. How can power rule be applied?"}
-messages.append(message)
-message = {
-    "sender": "You",
-    "message": " 2x"}
-messages.append(message)
-message = {
-    "sender": "Bot",
-    "message": "Yes, that's correct! To further check your understanding, consider these questions: 1. What would be the derivative of \( f(x) = x^4 \)? 2. Why do we subtract one from the exponent in the power rule?"}
-messages.append(message)
 
 @socketio.on('message')
 def handle_message(payload):    
@@ -418,7 +418,7 @@ def handle_message(payload):
     #time.sleep(30)
     message = {
         "sender": "Bot",
-        "message": response['message']['content']
+        "message": response
     }
     messages.append(message)
     
